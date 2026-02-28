@@ -1,0 +1,16 @@
+# Claude Code
+.claude/
+
+# PlatformIO
+arcade-led-firmware/.pio/
+arcade-led-firmware/.vscode/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# macOS
+.DS_Store

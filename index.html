@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script>
+        const ws = new WebSocket("ws://localhost:8765");
+
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                cmd: "effect", chain: "A", type: "sparkle",
+                segment: 0, color: { r: 255, g: 0, b: 200 },
+                speed: 100, repeat: -1, priority: 2
+            }));
+        };
+    </script>
+</head>
+
+<body>
+    <h1>Arcade LED Control</h1>
+</body>
+
+</html>

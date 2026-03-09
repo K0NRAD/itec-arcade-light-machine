@@ -133,3 +133,5 @@ Spielfarben: Pac-Man Gelb → Space Invaders Grün → Asteroids Weiß/Cyan
 | Space Invaders | Alien Hit, Spieler Hit, UFO, Welle komplett, Game Over            | Grün          |
 | Asteroids      | Asteroid Hit, Spieler Hit, Extra Leben, Level Complete, Game Over | Weiß/Cyan     |
 | System         | Spiel Start, Spiel Ende, Highscore, Münze                         | Spielabhängig |
+
+

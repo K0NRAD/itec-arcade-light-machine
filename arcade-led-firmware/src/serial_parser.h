@@ -1,5 +1,12 @@
 #pragma once
 
-// JSON-Befehl aus dem Serial-Buffer verarbeiten und Effekte anwenden.
-// Greift auf globale Effekt-Zustände aus main.cpp zu (via extern).
-void processCommand(const char* json);
+#include "chain_controller.h"
+
+using ErrorCallback = void (*)(uint8_t code, const char* msg);
+
+void processCommand(
+    const char*      json,
+    ChainController& chainA,
+    ChainController& chainB,
+    ErrorCallback    onError
+);

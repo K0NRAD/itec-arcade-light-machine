@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"name": "arcade-led-firmware",
+			"path": "."
+		}
+	],
+	"settings": {}
+}

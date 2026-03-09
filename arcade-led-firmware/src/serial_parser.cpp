@@ -4,17 +4,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-// Globale Effekt-Zustände aus main.cpp
-extern Effect activeA;
-extern Effect activeB;
-extern Effect attractA;
-extern Effect attractB;
-extern bool   attractPaused;
-
-// Fehlerausgabe aus main.cpp
-extern void sendError(uint8_t code, const char* msg);
-
-// Effekttyp aus JSON-String auflösen — unbekannte Namen liefern 255
 static EffectType parseEffectType(const char* name) {
     if (strcmp(name, "fill")    == 0) return EFFECT_FILL;
     if (strcmp(name, "blink")   == 0) return EFFECT_BLINK;
@@ -33,25 +22,30 @@ static Priority parsePriority(uint8_t val) {
     return PRIO_LOW;
 }
 
-static void handleEffectCommand(const JsonDocument& doc) {
+static void handleEffectCommand(
+    const JsonDocument& doc,
+    ChainController& chainA,
+    ChainController& chainB,
+    ErrorCallback onError
+) {
     const char* chainStr = doc["chain"] | "A";
     const char* typeStr  = doc["type"]  | "";
 
     EffectType type = parseEffectType(typeStr);
     if (type == static_cast<EffectType>(255)) {
-        sendError(3, "unknown effect type");
+        onError(3, "unknown effect type");
         return;
     }
 
     uint8_t segId = doc["segment"] | 99;
     if (segId > 5 && segId != 99) {
-        sendError(2, "unknown segment");
+        onError(2, "unknown segment");
         return;
     }
 
     uint16_t speed = doc["speed"] | 100;
     if (speed == 0) {
-        sendError(4, "speed must not be zero");
+        onError(4, "speed must not be zero");
         return;
     }
 
@@ -70,42 +64,52 @@ static void handleEffectCommand(const JsonDocument& doc) {
 
     bool isChainA = (chainStr[0] == 'A' || chainStr[0] == 'a');
     if (isChainA) {
-        applyEffect(activeA, newEffect);
+        chainA.applyEffect(newEffect);
     } else {
-        applyEffect(activeB, newEffect);
+        chainB.applyEffect(newEffect);
     }
 }
 
-static void handleAttractCommand(const JsonDocument& doc) {
+static void handleAttractCommand(
+    const JsonDocument& doc,
+    ChainController& chainA,
+    ChainController& chainB,
+    ErrorCallback onError
+) {
     const char* state = doc["state"] | "";
 
     if (strcmp(state, "pause") == 0) {
-        attractPaused = true;
+        chainA.pauseAttract();
+        chainB.pauseAttract();
     } else if (strcmp(state, "resume") == 0) {
-        attractPaused = false;
-        activeA = attractA;
-        activeB = attractB;
+        chainA.resumeAttract();
+        chainB.resumeAttract();
     } else {
-        sendError(4, "unknown attract state");
+        onError(4, "unknown attract state");
     }
 }
 
-void processCommand(const char* json) {
+void processCommand(
+    const char*      json,
+    ChainController& chainA,
+    ChainController& chainB,
+    ErrorCallback    onError
+) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json);
 
     if (err) {
-        sendError(1, "json parse error");
+        onError(1, "json parse error");
         return;
     }
 
     const char* cmd = doc["cmd"] | "";
 
     if (strcmp(cmd, "effect") == 0) {
-        handleEffectCommand(doc);
+        handleEffectCommand(doc, chainA, chainB, onError);
     } else if (strcmp(cmd, "attract") == 0) {
-        handleAttractCommand(doc);
+        handleAttractCommand(doc, chainA, chainB, onError);
     } else {
-        sendError(5, "unknown command");
+        onError(5, "unknown command");
     }
 }

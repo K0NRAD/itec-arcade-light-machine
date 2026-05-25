@@ -1,8 +1,6 @@
 import asyncio
 import json
 import logging
-import sys
-import threading
 
 from config import SERIAL_BAUD, SERIAL_PORT, WS_HOST, WS_PORT
 from serial_handler import SerialHandler
@@ -30,12 +28,10 @@ def on_esp32_message(message: str):
 
     if status == "ready":
         logger.info(
-            "ESP32 bereit — Firmware %s | Kette A: %d LEDs | Kette B: %d LEDs",
+            "ESP32 bereit — Firmware %s | Kette A: %d LEDs",
             data.get("version", "?"),
             data.get("leds_a", 0),
-            data.get("leds_b", 0),
         )
-
     elif status == "error":
         logger.error(
             "ESP32-Fehler [Code %s]: %s",
@@ -46,25 +42,11 @@ def on_esp32_message(message: str):
 
 def main():
     logger.info("Arcade LED Bridge startet...")
+    logger.info("Serial: %s @ %d Baud  |  WebSocket: ws://%s:%d", SERIAL_PORT, SERIAL_BAUD, WS_HOST, WS_PORT)
 
-    # Serial-Verbindung zum ESP32 herstellen
     serial_handler = SerialHandler(SERIAL_PORT, SERIAL_BAUD)
-    try:
-        serial_handler.connect()
-    except Exception as exc:
-        logger.critical("Serial-Verbindung fehlgeschlagen: %s", exc)
-        sys.exit(1)
+    serial_handler.start(on_esp32_message)
 
-    # ESP32-Antworten in eigenem Daemon-Thread empfangen
-    listen_thread = threading.Thread(
-        target=serial_handler.listen,
-        args=(on_esp32_message,),
-        daemon=True,
-        name="esp32-listener",
-    )
-    listen_thread.start()
-
-    # WebSocket-Server starten
     server = WebSocketServer(WS_HOST, WS_PORT, serial_handler)
 
     try:

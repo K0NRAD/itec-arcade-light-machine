@@ -62,14 +62,15 @@ void updateEffect(Effect& fx, CRGB* ledArray, uint16_t numLeds, const Segment& s
 
             uint16_t segLen = seg.count();
 
-            // Segment löschen vor jedem Frame
             for (uint16_t i = seg.start; i <= seg.end; i++) {
                 ledArray[i] = CRGB::Black;
             }
 
-            // Kopf und Schweif zeichnen — Helligkeit nimmt nach hinten ab
+            // Kopf und Schweif zeichnen; direction=-1 kehrt Laufrichtung um
             for (uint8_t t = 0; t < fx.length; t++) {
-                int32_t pos = (int32_t)fx.step - t;
+                int32_t pos = (fx.direction >= 0)
+                    ? (int32_t)fx.step - t
+                    : (int32_t)(segLen - 1 - fx.step) + t;
                 if (pos >= 0 && pos < (int32_t)segLen) {
                     uint8_t brightness = 255 - (uint8_t)((255 / fx.length) * t);
                     ledArray[seg.start + pos] = fx.color;
@@ -157,20 +158,67 @@ void updateEffect(Effect& fx, CRGB* ledArray, uint16_t numLeds, const Segment& s
 
             uint16_t segLen = seg.count();
             if (fx.step < segLen) {
-                // Nächste LED einblenden
-                ledArray[seg.start + fx.step] = fx.color;
+                // direction=-1 füllt von Ende nach Anfang
+                uint16_t ledIdx = (fx.direction >= 0)
+                    ? seg.start + fx.step
+                    : seg.end   - fx.step;
+                ledArray[ledIdx] = fx.color;
                 fx.step++;
             } else {
-                // Durchlauf abgeschlossen
                 fx.repeatCount++;
                 if (fx.repeat != -1 && fx.repeatCount >= fx.repeat) {
                     fx.finished = true;
                 } else {
-                    // Segment löschen und neu starten
                     for (uint16_t i = seg.start; i <= seg.end; i++) {
                         ledArray[i] = CRGB::Black;
                     }
                     fx.step = 0;
+                }
+            }
+            break;
+        }
+
+        case EFFECT_SCANNER: {
+            if (now - fx.lastUpdate < fx.speed) break;
+            fx.lastUpdate = now;
+
+            uint16_t segLen = seg.count();
+            if (segLen < 3) break;
+
+            uint16_t half       = segLen / 2;
+            uint16_t totalSteps = half * 2; // Raus + Rein, je 1 Frame Pause an den Rändern
+
+            // Ausblenden erzeugt den Nachzieh-Effekt — length steuert Schweif-Länge
+            uint8_t fadeVal = (uint8_t)(255 - 200 / max((uint8_t)1, fx.length));
+            for (uint16_t i = seg.start; i <= seg.end; i++) {
+                ledArray[i].nscale8(fadeVal);
+            }
+
+            // Ping-Pong-Offset vom Mittelpunkt; direction=-1 startet von den Rändern
+            uint16_t rawOffset = (fx.step < half)
+                ? fx.step
+                : (2 * half - 1) - fx.step;
+            uint16_t offset = (fx.direction >= 0)
+                ? rawOffset
+                : (half - 1) - rawOffset;
+            int32_t center = (int32_t)seg.start + (int32_t)half;
+
+            int32_t lPos = center - (int32_t)offset;
+            int32_t rPos = center + (int32_t)offset;
+
+            if (lPos >= (int32_t)seg.start && lPos <= (int32_t)seg.end) {
+                ledArray[lPos] = fx.color;
+            }
+            if (rPos != lPos && rPos >= (int32_t)seg.start && rPos <= (int32_t)seg.end) {
+                ledArray[rPos] = fx.color;
+            }
+
+            fx.step++;
+            if (fx.step >= totalSteps) {
+                fx.step = 0;
+                fx.repeatCount++;
+                if (fx.repeat != -1 && fx.repeatCount >= fx.repeat) {
+                    fx.finished = true;
                 }
             }
             break;

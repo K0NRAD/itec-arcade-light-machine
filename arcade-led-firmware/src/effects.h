@@ -10,7 +10,8 @@ enum EffectType : uint8_t {
     EFFECT_PULSE   = 4,  // speed = BPM
     EFFECT_RAINBOW = 5,  // speed = ms pro Schritt
     EFFECT_SPARKLE = 6,  // speed = ms pro Frame
-    EFFECT_WIPE    = 7   // speed = ms pro LED
+    EFFECT_WIPE    = 7,  // speed = ms pro LED
+    EFFECT_SCANNER = 8   // speed = ms pro Schritt, length = Schweif-Länge
 };
 
 enum Priority : uint8_t {
@@ -21,11 +22,12 @@ enum Priority : uint8_t {
 
 struct Effect {
     EffectType type      = EFFECT_OFF;
-    uint8_t    segmentId = 99;        // 99 = gesamte Kette
+    uint8_t    segmentId = 99;        // 99 = alle Segmente
     CRGB       color     = CRGB::Black;
     uint16_t   speed     = 100;
-    uint8_t    length    = 5;         // Chase-Schweif-Länge in LEDs
+    uint8_t    length    = 5;         // Chase/Scanner-Schweif-Länge in LEDs
     int16_t    repeat    = -1;        // -1 = endlos, n = n Wiederholungen
+    int8_t     direction = 1;         // 1 = vorwärts, -1 = rückwärts (chase/wipe/scanner)
 
     Priority   priority  = PRIO_LOW;
 

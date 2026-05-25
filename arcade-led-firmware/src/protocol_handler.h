@@ -10,7 +10,7 @@ public:
 
     void sendHeartbeat() const;
     static void sendError(uint8_t code, const char* msg);
-    void readAndProcess(ChainController& chainA, ChainController& chainB);
+    void readAndProcess(ChainController& chainA);
 
 private:
     char     _serialBuffer[SERIAL_BUFFER_LEN];

@@ -13,6 +13,7 @@ static EffectType parseEffectType(const char* name) {
     if (strcmp(name, "sparkle") == 0) return EFFECT_SPARKLE;
     if (strcmp(name, "wipe")    == 0) return EFFECT_WIPE;
     if (strcmp(name, "off")     == 0) return EFFECT_OFF;
+    if (strcmp(name, "scanner") == 0) return EFFECT_SCANNER;
     return static_cast<EffectType>(255);
 }
 
@@ -22,68 +23,88 @@ static Priority parsePriority(uint8_t val) {
     return PRIO_LOW;
 }
 
-static void handleEffectCommand(
-    const JsonDocument& doc,
-    ChainController& chainA,
-    ChainController& chainB,
-    ErrorCallback onError
-) {
-    const char* chainStr = doc["chain"] | "A";
-    const char* typeStr  = doc["type"]  | "";
-
+static bool buildBaseEffect(const JsonDocument& doc, Effect& out, ErrorCallback onError) {
+    const char* typeStr = doc["type"] | "";
     EffectType type = parseEffectType(typeStr);
     if (type == static_cast<EffectType>(255)) {
         onError(3, "unknown effect type");
-        return;
-    }
-
-    uint8_t segId = doc["segment"] | 99;
-    if (segId > 5 && segId != 99) {
-        onError(2, "unknown segment");
-        return;
+        return false;
     }
 
     uint16_t speed = doc["speed"] | 100;
     if (speed == 0) {
         onError(4, "speed must not be zero");
-        return;
+        return false;
     }
 
-    Effect newEffect;
-    newEffect.type      = type;
-    newEffect.segmentId = segId;
-    newEffect.color     = CRGB(
-        (uint8_t)(doc["color"]["r"] | 255),
-        (uint8_t)(doc["color"]["g"] | 255),
-        (uint8_t)(doc["color"]["b"] | 255)
+    out.type      = type;
+    out.color     = CRGB(
+        (uint8_t)(doc["color"]["r"] | 0),
+        (uint8_t)(doc["color"]["g"] | 0),
+        (uint8_t)(doc["color"]["b"] | 0)
     );
-    newEffect.speed    = speed;
-    newEffect.length   = doc["length"]   | 5;
-    newEffect.repeat   = doc["repeat"]   | -1;
-    newEffect.priority = parsePriority(doc["priority"] | 1);
+    out.speed    = speed;
+    out.length   = doc["length"]   | 5;
+    out.repeat   = doc["repeat"]   | -1;
+    out.priority = parsePriority(doc["priority"] | 1);
+    return true;
+}
 
-    bool isChainA = (chainStr[0] == 'A' || chainStr[0] == 'a');
-    if (isChainA) {
-        chainA.applyEffect(newEffect);
+static void applySegment(
+    ChainController& chainA,
+    Effect base,
+    uint8_t segId,
+    int8_t dir,
+    ErrorCallback onError
+) {
+    if (segId > 5 && segId != 99) {
+        onError(2, "unknown segment");
+        return;
+    }
+    base.segmentId = segId;
+    base.direction = dir;
+    chainA.applyEffect(base);
+}
+
+static void handleEffectCommand(
+    const JsonDocument& doc,
+    ChainController& chainA,
+    ErrorCallback onError
+) {
+    Effect base;
+    if (!buildBaseEffect(doc, base, onError)) return;
+
+    // "segment" kann eine Ganzzahl oder ein Array sein
+    if (doc["segment"].is<JsonArrayConst>()) {
+        JsonArrayConst segs = doc["segment"].as<JsonArrayConst>();
+        bool dirIsArray = doc["dir"].is<JsonArrayConst>();
+        JsonArrayConst dirs;
+        if (dirIsArray) dirs = doc["dir"].as<JsonArrayConst>();
+        int8_t singleDir = (int8_t)(doc["dir"] | 1);
+
+        for (size_t i = 0; i < segs.size(); i++) {
+            uint8_t segId = segs[i] | 99;
+            int8_t  dir   = dirIsArray ? (int8_t)(dirs[i] | 1) : singleDir;
+            applySegment(chainA, base, segId, dir, onError);
+        }
     } else {
-        chainB.applyEffect(newEffect);
+        uint8_t segId = doc["segment"] | 99;
+        int8_t  dir   = (int8_t)(doc["dir"] | 1);
+        applySegment(chainA, base, segId, dir, onError);
     }
 }
 
 static void handleAttractCommand(
     const JsonDocument& doc,
     ChainController& chainA,
-    ChainController& chainB,
     ErrorCallback onError
 ) {
     const char* state = doc["state"] | "";
 
     if (strcmp(state, "pause") == 0) {
         chainA.pauseAttract();
-        chainB.pauseAttract();
     } else if (strcmp(state, "resume") == 0) {
         chainA.resumeAttract();
-        chainB.resumeAttract();
     } else {
         onError(4, "unknown attract state");
     }
@@ -92,7 +113,6 @@ static void handleAttractCommand(
 void processCommand(
     const char*      json,
     ChainController& chainA,
-    ChainController& chainB,
     ErrorCallback    onError
 ) {
     JsonDocument doc;
@@ -106,9 +126,9 @@ void processCommand(
     const char* cmd = doc["cmd"] | "";
 
     if (strcmp(cmd, "effect") == 0) {
-        handleEffectCommand(doc, chainA, chainB, onError);
+        handleEffectCommand(doc, chainA, onError);
     } else if (strcmp(cmd, "attract") == 0) {
-        handleAttractCommand(doc, chainA, chainB, onError);
+        handleAttractCommand(doc, chainA, onError);
     } else {
         onError(5, "unknown command");
     }

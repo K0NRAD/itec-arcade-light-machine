@@ -1,43 +1,35 @@
-## Gesamtkonzept: Arcade Console LED-Steuerung
+# Arcade Console LED-Steuerung
 
 ---
 
 ## Hardware
 
-| Komponente        | Spezifikation                          |
-| ----------------- | -------------------------------------- |
-| Mikrocontroller   | ESP32                                  |
-| LED-Typ           | WS2812B, 60 LEDs/Meter                 |
-| Helligkeit        | 20% (Betriebshelligkeit)               |
-| Ketten            | 2 unabhängige Ketten à 186 LEDs / 3,1m |
-| Netzteil          | 2× 5V/3A (je eine pro Kette)           |
-| Stromeinspeisung  | je 1× am Anfang pro Kette              |
-| Daten-Pin Kette A | ESP32 Pin 5                            |
-| Daten-Pin Kette B | ESP32 Pin 18                           |
-| PC-Verbindung     | USB Serial                             |
+| Komponente       | Spezifikation                    |
+| ---------------- | -------------------------------- |
+| Mikrocontroller  | ESP32                            |
+| LED-Typ          | WS2812B, 60 LEDs/Meter (GRB)    |
+| Helligkeit       | 20% (Betriebshelligkeit)         |
+| Kette A          | 166 LEDs, Pin 5                  |
+| Netzteil         | 5V/3A                            |
+| Stromeinspeisung | Anfang der Kette                 |
+| PC-Verbindung    | USB Serial, 115200 Baud          |
 
 ---
 
 ## LED-Segmente
 
-**Kette A — Spieler-nah (sichtbar)**
+| Segment | Zone           | LEDs | Buffer-Range | Richtung |
+| ------- | -------------- | ---- | ------------ | -------- |
+| 0       | Marquee        | 34   | 0 – 33       | reversed |
+| 1       | Monitor oben   | 31   | 34 – 64      | vorwärts |
+| 2       | Monitor links  | 18   | 114 – 131    | reversed |
+| 3       | Monitor unten  | 31   | 83 – 113     | reversed |
+| 4       | Monitor rechts | 18   | 65 – 82      | vorwärts |
+| 5       | Control Panel  | 34   | 132 – 165    | vorwärts |
 
-| Segment | Zone           | LEDs | Index   |
-| ------- | -------------- | ---- | ------- |
-| 0       | Marquee        | 42   | 0–41    |
-| 1       | Monitor rechts | 30   | 42–71   |
-| 2       | Monitor unten  | 30   | 72–101  |
-| 3       | Monitor links  | 30   | 102–131 |
-| 4       | Monitor oben   | 12   | 132–143 |
-| 5       | Control Panel  | 42   | 144–185 |
+Physische Strip-Reihenfolge: Marquee → Monitor oben → Monitor rechts → Monitor unten → Monitor links → Control Panel
 
-**Kette B — Ambient (Gehäuse)**
-
-| Segment | Zone         | LEDs | Index   |
-| ------- | ------------ | ---- | ------- |
-| 0       | Seite links  | 72   | 0–71    |
-| 1       | Boden        | 42   | 72–113  |
-| 2       | Seite rechts | 72   | 114–185 |
+Segment `99` adressiert alle 6 Segmente gleichzeitig.
 
 ---
 
@@ -48,90 +40,175 @@ Pac-Man (Godot)         ──┐
 Asteroids (JS/Browser)  ──┼──► Python Bridge ──► USB Serial ──► ESP32 ──► LEDs
 Space Invaders (Python) ──┘
          │
-         └── WebSocket (ws://localhost:8765)
+         └── WebSocket ws://localhost:8765
 ```
 
-| Spiel          | Sprache            | Anbindung           |
-| -------------- | ------------------ | ------------------- |
-| Pac-Man        | Godot              | WebSocket localhost |
-| Asteroids      | JavaScript/Browser | WebSocket localhost |
-| Space Invaders | Python             | WebSocket localhost |
-
-Die Python Bridge ist ein eigenständiger Prozess — einzige Schnittstelle zum ESP32.
+| Komponente    | Verzeichnis            | Beschreibung                             |
+| ------------- | ---------------------- | ---------------------------------------- |
+| Firmware      | `arcade-led-firmware/` | ESP32-Firmware (PlatformIO, FastLED)     |
+| Bridge        | `arcade-led-bridge/`   | Python-Prozess: WebSocket ↔ USB Serial   |
+| Control Panel | `index.html`           | Browser-UI: Effekt-Builder + Simulator   |
 
 ---
 
 ## Protokoll
 
-**Format:** JSON, eine Zeile, terminiert mit `\n`
-**Richtung:** Bidirektional
-**Fehlerbehandlung:** ESP32 meldet nur Fehler (NACK) — kein ACK bei Erfolg
-**Heartbeat:** ESP32 sendet beim Start automatisch seinen Status
+**Format:** JSON, eine Zeile, `\n`-terminiert  
+**Transport:** WebSocket (Spiele → Bridge) und USB Serial (Bridge → ESP32)
+
+### Effekt-Befehl
 
 ```json
-// Befehl PC → ESP32
-{"cmd": "effect", "type": "chase", "segment": "monitor", "color": {"r": 255, "g": 200, "b": 0}, "speed": 50, "repeat": 1, "priority": 2}
-
-// Fehler ESP32 → PC
-{"status": "error", "code": 2, "msg": "unknown segment"}
-
-// Heartbeat ESP32 → PC
-{"status": "ready", "version": "1.0.0", "leds_a": 186, "leds_b": 186}
+{
+  "cmd": "effect",
+  "chain": "A",
+  "type": "chase",
+  "segment": 1,
+  "color": {"r": 255, "g": 215, "b": 0},
+  "speed": 40,
+  "length": 5,
+  "repeat": 1,
+  "dir": 1,
+  "priority": 2
+}
 ```
+
+`segment` und `dir` können auch als Array übergeben werden, um mehrere Segmente mit individuellen Richtungen anzusprechen:
+
+```json
+{"cmd": "effect", "segment": [0, 2, 4], "dir": [1, -1, 1], ...}
+```
+
+### Attract-Mode steuern
+
+```json
+{"cmd": "attract", "state": "pause"}
+{"cmd": "attract", "state": "resume"}
+```
+
+### ESP32-Antworten
+
+```json
+{"status": "ready", "version": "1.0.0", "leds_a": 166}
+{"status": "error", "code": 2, "msg": "unknown segment"}
+```
+
+| Fehler-Code | Bedeutung         |
+| ----------- | ----------------- |
+| 1           | Ungültiges JSON   |
+| 2           | Unbekanntes Segment |
+| 3           | Unbekannter Effekt-Typ |
+| 4           | Ungültige Parameter |
+| 5           | Unbekannter Befehl |
 
 ---
 
 ## Effekt-Typen
 
-| Typ     | Beschreibung                       |
-| ------- | ---------------------------------- |
-| FILL    | Ganzes Segment in einer Farbe      |
-| BLINK   | Segment blinkt in Intervallen      |
-| CHASE   | Lauflicht mit Schweif              |
-| PULSE   | Helligkeit atmet auf/ab            |
-| RAINBOW | Regenbogen läuft durch Segment     |
-| SPARKLE | Zufällige LEDs blitzen auf         |
-| WIPE    | Segment füllt sich von einer Seite |
-| OFF     | Segment aus                        |
+| Typ     | Beschreibung                              | `speed`-Bedeutung   | `length`-Bedeutung |
+| ------- | ----------------------------------------- | ------------------- | ------------------ |
+| fill    | Ganzes Segment in einer Farbe             | —                   | —                  |
+| blink   | Segment blinkt in Intervallen             | ms/Toggle           | —                  |
+| chase   | Lauflicht mit Schweif                     | ms/Schritt          | Schweif-LEDs       |
+| pulse   | Helligkeit atmet auf/ab (BPM)             | BPM                 | —                  |
+| rainbow | Regenbogen läuft durch Segment            | ms/Schritt          | —                  |
+| sparkle | Zufällige LEDs blitzen auf                | ms/Frame            | —                  |
+| wipe    | Segment füllt sich von einer Seite        | ms/LED              | —                  |
+| scanner | Knight-Rider-Effekt (symmetrisch)         | ms/Schritt          | Fade-Länge         |
+| off     | Segment aus                               | —                   | —                  |
 
-**Effekt-Parameter:** type, segment, color, speed, length, repeat, brightness, priority
+`dir`: `1` = vorwärts, `-1` = rückwärts (wirkt auf chase, wipe, scanner)
 
 ---
 
 ## Effekt-Priorisierung
 
-| Ebene  | Priorität | Beispiele                               |
-| ------ | --------- | --------------------------------------- |
-| HIGH   | 3         | Game Over, Level Complete, Player Death |
-| MEDIUM | 2         | Treffer, Bonus, Pill gegessen           |
-| LOW    | 1         | Attract-Mode, Idle                      |
+| Priorität | Name   | Beispiele                               |
+| --------- | ------ | --------------------------------------- |
+| 3         | HIGH   | Game Over, Level Complete, Player Death |
+| 2         | MEDIUM | Treffer, Bonus, Pill gegessen           |
+| 1         | LOW    | Attract-Mode, Idle                      |
 
-- Höhere Priorität verdrängt immer
-- Gleiche Priorität: neuer Effekt verdrängt laufenden
+- Höhere Priorität verdrängt immer einen laufenden Effekt
+- Gleiche Priorität: neuer Effekt verdrängt den laufenden
 - Niedrigere Priorität wird ignoriert
-- Nach HIGH-Effekt: automatischer Rückfall auf Attract-Mode
-- Jede Kette hat eigene unabhängige Priorisierung
+- Nach Ablauf eines Effekts: automatischer Rückfall auf Attract-Mode
 
 ---
 
 ## Attract-Mode
 
-| Phase          | Zeitraum | Kette A              | Kette B              |
-| -------------- | -------- | -------------------- | -------------------- |
-| Soft Idle      | 0–5 Min  | Pulse Spielfarbe     | Langsamer Rainbow    |
-| Active Attract | 5+ Min   | Spielfarben rotieren | Chase Seitenstreifen |
-
-Spielfarben: Pac-Man Gelb → Space Invaders Grün → Asteroids Weiß/Cyan
+- Effekt: Pulse Blau (`r:0, g:100, b:200`) auf allen Segmenten, BPM=30
+- Wird automatisch aktiviert wenn kein Spiel läuft
+- Kann über `{"cmd":"attract","state":"pause"}` pausiert werden
 
 ---
 
-## Arcade-Effekt-Bibliothek (Kurzübersicht)
+## Spielfarben
 
-| Spiel          | Schlüsselereignisse                                               | Primärfarbe   |
-| -------------- | ----------------------------------------------------------------- | ------------- |
-| Pac-Man        | Pill, Power Pill, Geist, Level Complete, Death, Game Over, Bonus  | Gelb          |
-| Space Invaders | Alien Hit, Spieler Hit, UFO, Welle komplett, Game Over            | Grün          |
-| Asteroids      | Asteroid Hit, Spieler Hit, Extra Leben, Level Complete, Game Over | Weiß/Cyan     |
-| System         | Spiel Start, Spiel Ende, Highscore, Münze                         | Spielabhängig |
+| Spiel          | Farbe  | RGB              |
+| -------------- | ------ | ---------------- |
+| Pac-Man        | Gelb   | 255 / 215 / 0    |
+| Space Invaders | Grün   | 0 / 255 / 0      |
+| Asteroids      | Cyan   | 0 / 255 / 255    |
+| Attract        | Blau   | 0 / 100 / 200    |
 
+---
 
+## Quickstart
+
+### 1. ESP32-Firmware flashen
+
+```bash
+cd arcade-led-firmware
+pio run --target upload
+```
+
+### 2. Python Bridge starten
+
+```bash
+cd arcade-led-bridge
+python -m venv .venv
+source .venv/bin/activate        # macOS/Linux
+# .venv\Scripts\activate.bat     # Windows CMD
+
+pip install -r requirements.txt
+ARCADE_SERIAL_PORT=/dev/cu.SLAB_USBtoUART python bridge.py
+```
+
+Seriellen Port ermitteln (macOS):
+
+```bash
+ls /dev/tty.*
+# ESP32 erscheint als /dev/tty.SLAB_USBtoUART oder /dev/tty.usbmodemXXXX
+```
+
+### 3. Control Panel öffnen
+
+`index.html` direkt im Browser öffnen — verbindet automatisch mit `ws://localhost:8765`.
+
+---
+
+## Verzeichnisstruktur
+
+```
+itec-arcade-light-machine/
+├── arcade-led-firmware/        # ESP32-Firmware (PlatformIO)
+│   ├── src/
+│   │   ├── main.cpp
+│   │   ├── arcade_controller.*
+│   │   ├── chain_controller.*
+│   │   ├── effects.*
+│   │   ├── segments.*
+│   │   ├── serial_parser.*
+│   │   └── protocol_handler.*
+│   ├── include/config.h
+│   └── platformio.ini
+├── arcade-led-bridge/          # Python Bridge
+│   ├── bridge.py
+│   ├── serial_handler.py
+│   ├── ws_server.py
+│   ├── config.py
+│   └── tests/
+└── index.html                  # Browser Control Panel + Simulator
+```

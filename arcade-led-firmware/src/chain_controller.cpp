@@ -4,18 +4,32 @@ ChainController::ChainController(CRGB* leds, uint16_t numLeds, SegmentResolver r
     : _leds(leds)
     , _numLeds(numLeds)
     , _resolver(resolver)
-    , _activeEffect()
-    , _attractEffect()
     , _attractPaused(false)
 {}
 
 void ChainController::initialize(const Effect& attractEffect) {
     _attractEffect = attractEffect;
-    _activeEffect  = attractEffect;
+    for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+        _effects[i]           = attractEffect;
+        _effects[i].segmentId = i;
+    }
 }
 
 void ChainController::applyEffect(const Effect& effect) {
-    ::applyEffect(_activeEffect, effect);
+    if (effect.segmentId == 99) {
+        for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+            Effect fx = effect;
+            fx.segmentId = i;
+            // Laufzeit-Zustand zurücksetzen damit alle Segmente synchron starten
+            fx.step        = 0;
+            fx.repeatCount = 0;
+            fx.finished    = false;
+            fx.lastUpdate  = 0;
+            ::applyEffect(_effects[i], fx);
+        }
+    } else if (effect.segmentId < SEGMENT_COUNT) {
+        ::applyEffect(_effects[effect.segmentId], effect);
+    }
 }
 
 void ChainController::pauseAttract() {
@@ -24,12 +38,19 @@ void ChainController::pauseAttract() {
 
 void ChainController::resumeAttract() {
     _attractPaused = false;
-    _activeEffect  = _attractEffect;
+    for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+        _effects[i]           = _attractEffect;
+        _effects[i].segmentId = i;
+    }
 }
 
 void ChainController::update() {
-    if (_activeEffect.finished && !_attractPaused) {
-        _activeEffect = _attractEffect;
+    for (uint8_t i = 0; i < SEGMENT_COUNT; i++) {
+        Effect& fx = _effects[i];
+        if (fx.finished && !_attractPaused) {
+            fx           = _attractEffect;
+            fx.segmentId = i;
+        }
+        ::updateEffect(fx, _leds, _numLeds, _resolver(i));
     }
-    ::updateEffect(_activeEffect, _leds, _numLeds, _resolver(_activeEffect.segmentId));
 }

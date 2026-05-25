@@ -2,8 +2,7 @@
 
 // --- LED-Konfiguration ---
 #define PIN_CHAIN_A       5       // GPIO für Kette A (Spieler-nah)
-#define PIN_CHAIN_B       18      // GPIO für Kette B (Ambient)
-#define LEDS_PER_CHAIN    186
+#define LEDS_PER_CHAIN    166
 #define LED_BRIGHTNESS    51      // 20% von 255
 #define LED_TYPE          WS2812B
 #define COLOR_ORDER       GRB

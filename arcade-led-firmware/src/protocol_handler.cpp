@@ -10,8 +10,8 @@ ProtocolHandler::ProtocolHandler()
 
 void ProtocolHandler::sendHeartbeat() const {
     Serial.printf(
-        "{\"status\":\"ready\",\"version\":\"%s\",\"leds_a\":%d,\"leds_b\":%d}\n",
-        FW_VERSION, LEDS_PER_CHAIN, LEDS_PER_CHAIN
+        "{\"status\":\"ready\",\"version\":\"%s\",\"leds_a\":%d}\n",
+        FW_VERSION, LEDS_PER_CHAIN
     );
 }
 
@@ -22,7 +22,7 @@ void ProtocolHandler::sendError(uint8_t code, const char* msg) {
     );
 }
 
-void ProtocolHandler::readAndProcess(ChainController& chainA, ChainController& chainB) {
+void ProtocolHandler::readAndProcess(ChainController& chainA) {
     while (Serial.available()) {
         char c = Serial.read();
         _lastCharTime = millis();
@@ -30,7 +30,7 @@ void ProtocolHandler::readAndProcess(ChainController& chainA, ChainController& c
         if (c == '\n' || c == '\r') {
             if (_bufferIndex > 0) {
                 _serialBuffer[_bufferIndex] = '\0';
-                processCommand(_serialBuffer, chainA, chainB, &ProtocolHandler::sendError);
+                processCommand(_serialBuffer, chainA, &ProtocolHandler::sendError);
                 _bufferIndex = 0;
             }
         } else if (_bufferIndex < SERIAL_BUFFER_LEN - 1) {
